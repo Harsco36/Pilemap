@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Scrap Metal Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #map { width: 100%; height: 100%; }
+
+    .leaflet-control-layers {
+        background-color: rgba(209, 210, 223, 0.95);
+        border: 1px solid #000;
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+    .leaflet-control-layers label { display: block; margin-bottom: 6px; cursor: pointer; }
+    .leaflet-control-layers input[type="checkbox"] { margin-right: 6px; transform: scale(1.2); }
+    .leaflet-control-layers-base { display: none; }
+
+    .leaflet-control-layers-toggle {
+        background: url('icons/harsco.png') no-repeat center center !important;
+        background-size: 20px 20px !important;
+        width: 30px !important;
+        height: 30px !important;
+    }
+
+    /* Fade buttons style */
+    .fade-btn {
+        position: absolute;
+        z-index: 1000;
+        background-color: rgba(209,210,223,0.95);
+        border: 1px solid #000;
+        border-radius: 6px;
+        padding: 0;
+        font-family: Arial, sans-serif;
+        font-size: 18px;
+        line-height: 1;
+        text-align: center;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.3s, background-color 0.2s, left 0.3s cubic-bezier(0.25, 1.5, 0.5, 1);
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .fade-btn:hover { background-color: rgba(180,180,200,0.95); }
+
+    .check { color: green; font-size: 18px; }
+    .cross { color: red; font-size: 18px; }
+    .leaflet-control-layers-overlays {
+        column-count: 2;
+        column-gap: 15px;
+    }
+    .leaflet-control-layers-overlays label {
+        display: block;
+        break-inside: avoid;
+        margin-bottom: 4px;
+    }
+#contextMenu {
+  display: none;
+  position: absolute;
+  z-index: 2000;
+  background: rgba(34, 34, 34, 0.95);
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+}
+#contextMenu ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+}
+#contextMenu li {
+  padding: 6px 12px;
+  cursor: pointer;
+}
+#contextMenu li:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+    var map = L.map('map', {
+        center: [40.793903, -82.536906],
+        zoom: 18,
+        minZoom: 18,
+        maxZoom: 21
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.imageOverlay('Scrapyard.png', [
+        [40.79156379934851, -82.54114438096362],
+        [40.79571031220616, -82.5323681932691]
+    ]).addTo(map);
+    const iconst181 = L.icon({ iconUrl: 'icons/st181.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconst430 = L.icon({ iconUrl: 'icons/st430.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconst435 = L.icon({ iconUrl: 'icons/st435.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconst436 = L.icon({ iconUrl: 'icons/st436.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconnickel409 = L.icon({ iconUrl: 'icons/nickel409.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconcc409 = L.icon({ iconUrl: 'icons/cc409.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconst409 = L.icon({ iconUrl: 'icons/st409.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconblend181 = L.icon({ iconUrl: 'icons/blend181.png', iconSize: [80,80], iconAnchor:[32,32], popupAnchor:[0,-10] });
+    const iconblend430 = L.icon({ iconUrl: 'icons/blend430.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconHome = L.icon({ iconUrl: 'icons/Home.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconTundish = L.icon({ iconUrl: 'icons/Tundish.png', iconSize: [128,128], iconAnchor:[64,64], popupAnchor:[0,-10] });
+    const iconReclaim = L.icon({ iconUrl: 'icons/Reclaim.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconMtown = L.icon({ iconUrl: 'icons/Mtown.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconHBI = L.icon({ iconUrl: 'icons/HBI.png', iconSize: [128,128], iconAnchor:[64,64], popupAnchor:[0,-10] });
+    const iconFrag = L.icon({ iconUrl: 'icons/Frag.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+    const iconAlloys = L.icon({ iconUrl: 'icons/Alloys.png', iconSize: [32,32], iconAnchor:[16,16], popupAnchor:[0,-10] });
+    const iconOther = L.icon({ iconUrl: 'icons/Other.png', iconSize: [96,96], iconAnchor:[48,48], popupAnchor:[0,-10] });
+
+    // --- Marker config ---
+    const markerConfig = {
+        "st181": { icon: iconst181, displayName: "181 Stainless" },
+        "st430": { icon: iconst430, displayName: "430 Stainless" },
+        "st435": { icon: iconst435, displayName: "435 Stainless" },
+        "st436": { icon: iconst436, displayName: "436 Stainless" },
+        "nickel409": { icon: iconnickel409, displayName: "409 Nickel" },
+        "cc409": { icon: iconcc409, displayName: "409 Converters" },
+        "st409": { icon: iconst409, displayName: "409 Scrap" },
+        "blend181": { icon: iconblend181, displayName: "181 Blend" },
+        "blend430": { icon: iconblend430, displayName: "430 Blend" },
+        "Home": { icon: iconHome, displayName: "Home" },
+        "Tundish": { icon: iconTundish, displayName: "Tundish" },
+        "Reclaim": { icon: iconReclaim, displayName: "Reclaim" },
+        "Mtown": { icon: iconMtown, displayName: "Middletown" },
+        "HBI": { icon: iconHBI, displayName: "Hot Briq Iron" },
+        "Frag": { icon: iconFrag, displayName: "Fragmented Scrap" },
+        "Alloys": { icon: iconAlloys, displayName: "Alloys" },
+        "Other": { icon: iconOther, displayName: "Other" }
+    };
+
+    Object.keys(markerConfig).forEach(type => markerConfig[type].layer = L.layerGroup().addTo(map));
+
+    fetch('markers.json')
+        .then(res => res.json())
+        .then(data => {
+            const unknownTypes = new Set();
+            data.forEach(marker => {
+                const config = markerConfig[marker.type];
+                if (!config) { unknownTypes.add(marker.type); return; }
+                const leafletMarker = L.marker([marker.lat, marker.lng], { icon: config.icon }).bindPopup(marker.name);
+                config.layer.addLayer(leafletMarker);
+            });
+            if(unknownTypes.size>0){ console.warn("Unknown marker types:", Array.from(unknownTypes)); }
+        })
+        .catch(err => console.error("Error loading markers.json:", err));
+
+    // --- Layer control ---
+    const overlayMaps = {};
+    Object.values(markerConfig).forEach(cfg => overlayMaps[cfg.displayName] = cfg.layer);
+    const layerControl = L.control.layers(null, overlayMaps, { collapsed: true, position: 'bottomleft' }).addTo(map);
+
+    // --- Hardcodes Opacity to 1 when layer is called ---
+    map.on('overlayadd', function(e) {
+        const cfg = Object.values(markerConfig).find(c => c.layer === e.layer);
+        if(cfg) {
+            cfg.layer.getLayers().forEach(marker => marker.setOpacity(1));
+        }
+    });
+
+    // --- Check / Uncheck All buttons ---
+    const mapDiv = document.getElementById('map');
+    const buttons = [
+        { icon:'❌', class:'cross', action:false },
+        { icon:'✅', class:'check', action:true }
+    ];
+    const buttonElements = []; // store DOM buttons
+
+    buttons.forEach((btnData,i)=>{
+        const btn = document.createElement('button');
+        btn.innerHTML = btnData.icon;
+        btn.className = 'fade-btn ' + btnData.class;
+        btn.style.bottom = (10 + i*35)+'px';
+        const layerPanel = document.querySelector('.leaflet-control-layers');
+        btn.style.left = (layerPanel ? layerPanel.offsetWidth + 10: 80) + 'px';
+        mapDiv.appendChild(btn);
+
+        buttonElements.push(btn); // save for later repositioning
+
+        // Fade on map hover
+        mapDiv.addEventListener('mouseenter', () => btn.style.opacity = 1);
+        mapDiv.addEventListener('mouseleave', () => btn.style.opacity = 0.8);
+
+        btn.addEventListener('click', () => {
+            Object.values(markerConfig).forEach(cfg=>{
+                const markers = cfg.layer.getLayers();
+                if(btnData.action) map.addLayer(cfg.layer);
+                let opacity = btnData.action?0:1, step=50, duration=300, steps=duration/step, stepCount=0;
+                const delta = (1/steps)*(btnData.action?1:-1);
+                const interval = setInterval(()=>{
+                    markers.forEach(m=>m.setOpacity(opacity));
+                    opacity += delta; stepCount++;
+                    if(stepCount>=steps){
+                        clearInterval(interval);
+                        if(!btnData.action) map.removeLayer(cfg.layer);
+                        else markers.forEach(m=>m.setOpacity(1));
+                    }
+                },step);
+
+                // sync checkboxes
+                const checkbox = [...document.querySelectorAll('.leaflet-control-layers-overlays input[type="checkbox"]')]
+                    .find(input=>input.nextSibling.textContent.trim()===cfg.displayName);
+                if(checkbox) checkbox.checked=btnData.action;
+            });
+        });
+    });
+
+// --- Keep buttons aligned with the layer panel (robust) ---
+function positionButtons() {
+    const layerPanel = document.querySelector('.leaflet-control-layers');
+    const mapRect = mapDiv.getBoundingClientRect();
+    if (layerPanel) {
+        const panelRect = layerPanel.getBoundingClientRect();
+        // compute left relative to mapDiv (8px gap)
+        const left = Math.max(panelRect.right - mapRect.left + 8, 8);
+        buttonElements.forEach((btn, i) => {
+            btn.style.left = left + 'px';
+            btn.style.bottom = (10 + i * 35) + 'px';
+        });
+    } else {
+        // fallback if panel not present yet
+        buttonElements.forEach((btn, i) => {
+            btn.style.left = '80px';
+            btn.style.bottom = (10 + i * 35) + 'px';
+        });
+    }
+}
+
+// initial positioning once buttons exist
+positionButtons();
+
+// 1) reposition after the toggle is clicked (Leaflet toggles classes/display)
+const toggle = document.querySelector('.leaflet-control-layers-toggle');
+if (toggle) {
+    toggle.addEventListener('click', () => {
+        // allow the panel open/close animation/layout to complete
+        setTimeout(positionButtons, 200);
+    });
+}
+
+// 2) observe the layer panel for class/attribute changes (e.g. expanded/collapsed)
+const layerPanelNode = document.querySelector('.leaflet-control-layers');
+if (layerPanelNode) {
+    // watch for class changes (Leaflet adds/removes expanded class)
+    const mo = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            if (m.type === 'attributes' && m.attributeName === 'class') {
+                positionButtons();
+                break;
+            }
+        }
+    });
+    mo.observe(layerPanelNode, { attributes: true, attributeFilter: ['class'] });
+
+    // also observe size changes (modern browsers)
+    if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(positionButtons);
+        ro.observe(layerPanelNode);
+    }
+} else {
+    // If panel isn't in DOM yet (rare), retry until it appears
+    let tries = 0;
+    const waitInterval = setInterval(() => {
+        const n = document.querySelector('.leaflet-control-layers');
+        if (n || tries++ > 20) {
+            clearInterval(waitInterval);
+            if (n) {
+                // attach observers now the node exists
+                positionButtons();
+                const mo = new MutationObserver((mutations) => {
+                    for (const m of mutations) {
+                        if (m.type === 'attributes' && m.attributeName === 'class') {
+                            positionButtons();
+                            break;
+                        }
+                    }
+                });
+                mo.observe(n, { attributes: true, attributeFilter: ['class'] });
+                if (typeof ResizeObserver !== 'undefined') {
+                    const ro = new ResizeObserver(positionButtons);
+                    ro.observe(n);
+                }
+            }
+        }
+    }, 150);
+}
+
+window.addEventListener('resize', positionButtons);
+
+// --- Global error handling ---
+window.addEventListener("error", e=>console.error("Error:",e.message));
+window.addEventListener("unhandledrejection", e=>console.error("Promise Error:",e.reason));
+
+// --- Custom Right-Click Context Menu ---
+const contextMenu = document.createElement('div');
+contextMenu.id = 'contextMenu';
+contextMenu.innerHTML = `
+  <ul style="
+    list-style:none;
+    margin:0;
+    padding:6px 0;
+    font-family:Arial, sans-serif;
+    font-size:14px;
+    background:rgba(34,34,34,0.95);
+    color:white;
+    border-radius:8px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.4);
+    min-width:140px;
+  ">
+    <li id="getCoords" style="padding:6px 12px;cursor:pointer;">📍 Get Coordinates</li>
+  </ul>
+`;
+
+contextMenu.style.position = 'absolute';
+contextMenu.style.display = 'none';
+contextMenu.style.zIndex = 2000;
+document.body.appendChild(contextMenu);
+
+let clickLatLng = null;
+
+// Show menu on right-click
+map.on('contextmenu', function(e) {
+    clickLatLng = e.latlng;
+    contextMenu.style.left = e.originalEvent.pageX + 'px';
+    contextMenu.style.top = e.originalEvent.pageY + 'px';
+    contextMenu.style.display = 'block';
+});
+
+// Hide menu on map click or outside click
+map.on('click', () => contextMenu.style.display = 'none');
+document.addEventListener('click', (e) => {
+    if (!contextMenu.contains(e.target)) {
+        contextMenu.style.display = 'none';
+    }
+});
+
+// --- Handle "Get Coordinates" with Marker Template ---
+document.getElementById('getCoords').addEventListener('click', async () => {
+    if (!clickLatLng) return;
+
+    const { lat, lng } = clickLatLng;
+
+    // Create a full marker template
+    const markerTemplate = {
+        type: "MATERIAL",
+        name: "PILE# AND DESCRIPTION",
+        lat: parseFloat(lat.toFixed(14)),
+        lng: parseFloat(lng.toFixed(14))
+    };
+
+    // Convert to single-line JSON
+    const markerJSON = JSON.stringify(markerTemplate);
+
+    // Copy to clipboard
+    try {
+        await navigator.clipboard.writeText(markerJSON);
+        console.log("Copied marker template to clipboard:", markerJSON);
+    } catch (err) {
+        console.warn("Clipboard copy failed:", err);
+    }
+
+    // Optional popup on map
+    L.popup()
+        .setLatLng(clickLatLng)
+        .setContent(`<b>Marker Copied!</b>`)
+        .openOn(map);
+
+    contextMenu.style.display = 'none';
+});
+</script>
+</body>
+</html>
