@@ -84,7 +84,8 @@
   {"type":"Other","name":"165 CarbonBush","lat":40.79340674553511,"lng":-82.53756036960543},
   {"type":"Other","name":"166 CarbonBush","lat":40.7934739681266,"lng":-82.53648703355549},
   {"type":"Other","name":"172 Banding","lat":40.794126231192756,"lng":-82.53829610263618},
-  {"type":"Other","name":"175 Pitscrap","lat":40.79341133881954,"lng":-82.53710704257969,"cell":"LC1"},
+  {"type":"Other","name":"175R Pitscrap","lat":40.79341133881954,"lng":-82.53710704257969},
+  {"type":"Other","name":"175 Pitscrap","lat":40.79385847131344,"lng":-82.53558129072191,"cell":"LC1"}
   {"type":"Other","name":"17a aod chutes","lat":40.79279180153046,"lng":-82.53560706998876},
   {"type":"Other","name":"17e HeavyMelt","lat":40.7939528944631,"lng":-82.53533855080605,"cell":"LC1"},
   {"type":"Other","name":"17eR HeavyMelt","lat":40.794011568103926,"lng":-82.53435039871722},
@@ -94,6 +95,7 @@
   {"type":"Other","name":"134 446st","lat":40.79415900044157,"lng":-82.53836005926134},
   {"type":"Other","name":"41b Bscrap","lat":40.79367063991754,"lng":-82.53599971532823,"cell":"LC1"},
   {"type":"Other","name":"736 300st","lat":40.79304176504606,"lng":-82.5359980013706}]
+
 
 
 
