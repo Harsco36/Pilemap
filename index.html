@@ -206,14 +206,23 @@ fetch('markers.json')
 
             cfg.layer.addLayer(m);
 
-            if (marker.cell && loadCells[marker.cell])
-                loadCells[marker.cell].addLayer(m);
+            // ✅ Updated logic for cell handling
+            if (marker.cell) {
+                if (Array.isArray(marker.cell)) {
+                    // If cell is an array, add marker to all matching loadCells
+                    marker.cell.forEach(c => {
+                        if (loadCells[c]) loadCells[c].addLayer(m);
+                    });
+                } else {
+                    // If cell is a string, keep original behavior
+                    if (loadCells[marker.cell]) loadCells[marker.cell].addLayer(m);
+                }
+            }
         });
 
         if (unknown.size)
             console.warn("Unknown types:", Array.from(unknown));
-    });
-
+    })
 /* ===================================================================
    LAYER CONTROL + CHECK ALL / UNCHECK ALL BUTTONS
 =================================================================== */
@@ -314,3 +323,4 @@ window.addEventListener("unhandledrejection", e => console.error("Promise Error:
 </script>
 </body>
 </html>
+
