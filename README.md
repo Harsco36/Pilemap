@@ -23,3 +23,5 @@ Export scrapmaster report data to be displayed within marker popups -- pile star
 Display mode for upcoming/due/past due piles
 
 search bar to find specific piles/active index to show currently visible markers?
+
+addition of radiation detector panels to clickable radiation logos -- Find radiation web panels for scalehouse
