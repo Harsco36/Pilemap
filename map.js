@@ -239,12 +239,11 @@ document.getElementById('getCoords').addEventListener('click', async () => {
     const emojiIcon = L.divIcon({
         html: '📍',
         className: '',
-        iconSize: [96, 96],
+        iconSize: [48, 48],
+        iconAnchor: [8,8]
     });
     const tempMarker = L.marker([lat, lng], { icon: emojiIcon }).addTo(map);
-    setTimeout(() => {
-        map.removeLayer(tempMarker);
-    }, 1500);
+    setTimeout(() => {map.removeLayer(tempMarker);}, 1500);
 
     contextMenu.style.display = 'none';
 });
