@@ -103,7 +103,6 @@ Object.keys(loadCellMarkers).forEach(id => {
             return;
         }
 
-        // Hide all material layers
         Object.values(markerConfig).forEach(cfg => {
             if (map.hasLayer(cfg.layer)) map.removeLayer(cfg.layer);
         });
