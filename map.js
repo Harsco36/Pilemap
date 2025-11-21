@@ -103,6 +103,7 @@ Object.keys(loadCellMarkers).forEach(id => {
             return;
         }
 
+        // Hide all material layers
         Object.values(markerConfig).forEach(cfg => {
             if (map.hasLayer(cfg.layer)) map.removeLayer(cfg.layer);
         });
@@ -145,7 +146,7 @@ fetch('markers.json')
     });
 
 /* ===================================================================
-   LAYER CONTROL + CHECK ALL / UNCHECK ALL BUTTONS
+   LAYER CONTROL
 =================================================================== */
 const overlayMaps = {};
 Object.values(markerConfig).forEach(cfg => overlayMaps[cfg.displayName] = cfg.layer);
@@ -155,13 +156,8 @@ const layerControl = L.control.layers(null, overlayMaps, {
     position: "bottomleft"
 }).addTo(map);
 
-const checkAllBtn = L.control({ position: "bottomleft" });
-checkAllBtn.onAdd = function() {
-    const btn = L
-
-
 /* ===================================================================
-   CHECK ALL / REMOVE ALL BUTTONS
+   CHECK ALL/REMOVE ALL BUTTON
 =================================================================== */
 const checkAllBtn = L.control({ position: "bottomleft" });
 checkAllBtn.onAdd = function() {
@@ -170,9 +166,11 @@ checkAllBtn.onAdd = function() {
     btn.style.margin = "4px";
     btn.style.padding = "4px 8px";
     btn.style.cursor = "pointer";
+
     btn.onclick = () => {
         Object.values(markerConfig).forEach(cfg => map.addLayer(cfg.layer));
     };
+
     return btn;
 };
 checkAllBtn.addTo(map);
@@ -184,14 +182,17 @@ uncheckAllBtn.onAdd = function() {
     btn.style.margin = "4px";
     btn.style.padding = "4px 8px";
     btn.style.cursor = "pointer";
+
     btn.onclick = () => {
         Object.values(markerConfig).forEach(cfg => {
             if (map.hasLayer(cfg.layer)) map.removeLayer(cfg.layer);
         });
+
         Object.values(loadCells).forEach(lc => {
             if (map.hasLayer(lc)) map.removeLayer(lc);
         });
     };
+
     return btn;
 };
 uncheckAllBtn.addTo(map);
@@ -228,14 +229,23 @@ document.getElementById('getCoords').addEventListener('click', async () => {
     const { lat, lng } = clickLatLng;
 
     const template = {
-        type: "MATERIAL",
-        name: "PILE# AND DESCRIPTION",
+        type: "MARKERTYPE",
+        name: "PILE# & MATERIAL",
         lat: parseFloat(lat.toFixed(14)),
         lng: parseFloat(lng.toFixed(14))
     };
 
     await navigator.clipboard.writeText(JSON.stringify(template));
-    L.popup().setLatLng(clickLatLng).setContent("<b>Marker Copied!</b>").openOn(map);
+
+    const emojiIcon = L.divIcon({
+        html: '📍',
+        className: '',
+        iconSize: [96, 96],
+    });
+    const tempMarker = L.marker([lat, lng], { icon: emojiIcon }).addTo(map);
+    setTimeout(() => {
+        map.removeLayer(tempMarker);
+    }, 1500);
 
     contextMenu.style.display = 'none';
 });
