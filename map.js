@@ -36,6 +36,9 @@ const iconHBI = L.icon({ iconUrl:'icons/HBI.png',iconSize:[128,128],iconAnchor:[
 const iconFrag = L.icon({ iconUrl:'icons/Frag.png',iconSize:[80,80],iconAnchor:[32,32] });
 const iconAlloys = L.icon({ iconUrl:'icons/Alloys.png',iconSize:[32,32],iconAnchor:[16,16] });
 const iconOther = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
+const iconCoils = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
+const iconBreaking = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
+const iconUnbreakable = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
 
 /* ===================================================================
    MATERIAL MARKER CONFIG
@@ -57,7 +60,10 @@ const markerConfig = {
     "HBI": { icon: iconHBI, displayName: "Hot Briq Iron" },
     "Frag": { icon: iconFrag, displayName: "Fragmented Scrap" },
     "Alloys": { icon: iconAlloys, displayName: "Alloys" },
-    "Other": { icon: iconOther, displayName: "Other" }
+    "Other": { icon: iconOther, displayName: "Other" },
+    "Coils": { icon: iconOther, displayName: "Coils/Cutting" },
+    "Breaking": { icon: iconOther, displayName: "Breaking" },
+    "Unbreakable": { icon: iconOther, displayName: "Unbreakable" }
 };
 
 Object.keys(markerConfig).forEach(type =>
