@@ -79,14 +79,15 @@
 
   {"type":"Other","name":"17e HeavyMelt","lat":40.7939528944631,"lng":-82.53533855080605,"cell":"LC1"},{"type":"Other","name":"17eR HeavyMelt","lat":40.794011568103926,"lng":-82.53435039871722},
   {"type":"Other","name":"17v RocketTops","lat":40.79334645221245,"lng":-82.53705403927027},
-  {"type":"Other","name":"17r/17c Broken Rolls","lat":40.79327091548683,"lng":-82.53566541397608},
+  {"type":"Other","name":"17b/17c Broken Rolls","lat":40.79327091548683,"lng":-82.53566541397608},
 
   {"type":"Other","name":"17w/17j Baghouse Filter Frames","lat":40.795085992711584,"lng":-82.53576010236156},
 
   {"type":"Other","name":"134 446st","lat":40.79415900044157,"lng":-82.53836005926134},
   {"type":"Other","name":"41b Bscrap","lat":40.79367063991754,"lng":-82.53599971532823,"cell":"LC1"},{"type":"Other","name":"41bR Bscrap","lat":40.79438236580418,"lng":-82.53591522574426},
   {"type":"Other","name":"736 300st","lat":40.79304176504606,"lng":-82.5359980013706},
-  {"type":"Other","name":"17d/17f Delta Rings","lat":40.7936615021604,"lng":-82.53832921385766},
+  {"type":"Other","name":"931 Mixed Alloys","lat":40.79333355737725,"lng":-82.53572143614294},
+  {"type":"Other","name":"17d/17f Delta Rings","lat":40.79379958368974,"lng":-82.53859207034112},
 
   {"type":"Other","name":"178/17h/17k Steel Pallets Older/Old/New","lat":40.79362088989123,"lng":-82.53814280033113},
 
@@ -103,4 +104,3 @@
 
   {"type":"Unbreakable","name":"32u 409h","lat":40.79397269284841,"lng":-82.53902994096279},
 {"type":"Home","name":"EVCh","lat":40.794012934831116,"lng":-82.53846077165724},{"type":"Home","name":"EVChR","lat":40.793248211075294,"lng":-82.53344811080188},{"type":"Tundish","name":"EVCt","lat":40.793921172124534,"lng":-82.53828533805394},{"type":"Reclaim","name":"EVCrc","lat":40.793813713003665,"lng":-82.53804611041147}]
-
