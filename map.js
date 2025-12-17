@@ -38,7 +38,7 @@ const iconAlloys = L.icon({ iconUrl:'icons/Alloys.png',iconSize:[32,32],iconAnch
 const iconOther = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
 const iconCoils = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
 const iconBreaking = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
-const iconUnbreakable = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
+const iconUnbreakable = L.icon({ iconUrl:'icons/Unbreakable.png',iconSize:[50,50],iconAnchor:[25,25] });
 
 /* ===================================================================
    MATERIAL MARKER CONFIG
@@ -63,7 +63,7 @@ const markerConfig = {
     "Other": { icon: iconOther, displayName: "Other" },
     "Coils": { icon: iconOther, displayName: "Coils/Cutting" },
     "Breaking": { icon: iconOther, displayName: "Breaking" },
-    "Unbreakable": { icon: iconOther, displayName: "Unbreakable" }
+    "Unbreakable": { icon: iconUnbreakable, displayName: "Unbreakable" }
 };
 
 Object.keys(markerConfig).forEach(type =>
