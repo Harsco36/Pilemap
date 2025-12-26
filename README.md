@@ -6,14 +6,9 @@ markers popups on mouse hover and not mouse click
 
 Coil piles available from clicking burning
 
-Breaking piles available from clicking dropball crane
-
-add unbreakable piles to map
-
 overall map border - and max bounds for panning
 
 right click marker creation feature
-
 more interactive right clicks
 
 information displayed clearer
@@ -24,4 +19,4 @@ Display mode for upcoming/due/past due piles
 
 search bar to find specific piles/active index to show currently visible markers?
 
-addition of radiation detector panels to clickable radiation logos -- Find radiation web panels for scalehouse
+addition of radiation detector panels to clickable radiation logos -- Only yard exit radiation scanner
