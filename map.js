@@ -211,8 +211,8 @@ Promise.all([
         <div style="font-weight:700;margin-bottom:4px">${marker.name}</div>
         <table style="font-size:12px;line-height:1.3">
           <tr><td style="padding-right:8px;color:#666">Material:</td><td>${s.material || ''}</td></tr>
-          <tr><td style="padding-right:8px;color:#666">Operating Inv:</td><td>${fmtUnit(s.operating_inventory_lbs)}</td></tr>
-          <tr><td style="padding-right:8px;color:#666">Last Zero:</td><td style="${lastZeroColor(s.last_zero_date)}">${s.last_zero_date || ''}</td></tr>
+          <tr><td style="padding-right:8px;color:#666">Inventory:</td><td>${fmtUnit(s.operating_inventory_lbs)}</td></tr>
+          <tr><td style="padding-right:8px;color:#666">Last Zero Date:</td><td style="${lastZeroColor(s.last_zero_date)}">${s.last_zero_date || ''}</td></tr>
         </table>
       </div>
     `;
