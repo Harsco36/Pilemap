@@ -12,11 +12,3 @@ right click marker creation feature
 more interactive right clicks
 
 information displayed clearer
-
-Export scrapmaster report data to be displayed within marker popups -- pile start date -- current stock
-
-Display mode for upcoming/due/past due piles
-
-search bar to find specific piles/active index to show currently visible markers?
-
-addition of radiation detector panels to clickable radiation logos -- Only yard exit radiation scanner
