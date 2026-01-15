@@ -3,10 +3,14 @@
  MAP SETUP
 =================================================================== */
 var map = L.map('map', {
-  center: [40.793903, -82.536906],
-  zoom: 18,
-  minZoom: 18,
-  maxZoom: 21
+    center: [40.793903, -82.536906],
+    zoom: 18,
+    minZoom: 18,
+    maxZoom: 21,
+
+    wheelPxPerZoomLevel: 100,
+    zoomSnap: 0,
+    zoomDelta: 0.25
 });
 map.doubleClickZoom.disable();
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -75,6 +79,25 @@ Object.keys(markerConfig).forEach(type =>
   markerConfig[type].layer = L.layerGroup().addTo(map)
 );
 
+// Custom bottom container for nested panels
+const bottomContainer = L.control({ position: 'bottomright' });
+
+bottomContainer.onAdd = function () {
+    const div = L.DomUtil.create('div');
+    div.id = 'bottomPanelContainer';
+    Object.assign(div.style, {
+        display: 'flex',
+        flexDirection: 'row',
+        gap: '10px',
+        margin: '10px',
+        width: 'auto',
+        justifyContent: 'flex-end',
+        alignItems: 'flex-end',
+        pointerEvents: 'none'   // allow map to receive clicks except on panels
+    });
+    return div;
+};
+bottomContainer.addTo(map);
 /* ===================================================================
  ATTENTION "PING" EFFECT
 =================================================================== */
@@ -297,10 +320,7 @@ Promise.all([
   pastDue.sort((a, b) => (b.ageMonths - a.ageMonths) || a.code.localeCompare(b.code));
 
   /* ===================================================================
-   CONSUMPTION CSV PARSER (side-by-side file)
-   Reads "Day,Consumed,Net_Tons,,Pile,Total_Actual,Avg_Daily" and builds:
-   { pileCodeUpperTrim -> avgDailyNumber }
-   No day counting. No usage math.
+   CONSUMPTION CSV PARSER
   =================================================================== */
   async function fetchConsumptionCsv() {
     const res = await fetch(consumptionCsvUrl);
@@ -332,9 +352,11 @@ Promise.all([
   /* ===================================================================
    Toggleable Past Due Panel
   =================================================================== */
-  const pastDueCtrl = L.control({ position: 'bottomright' });
+  const pastDueCtrl = L.control({ position: 'bottomleft' });
   pastDueCtrl.onAdd = function () {
-    const div = L.DomUtil.create('div');
+    const div = L.DomUtil.create('div'); 
+    L.DomEvent.disableScrollPropagation(div);
+    L.DomEvent.disableClickPropagation(div);
     div.id = 'pastDuePanel';
     Object.assign(div.style, {
       background: 'rgba(255,255,255,0.95)',
@@ -374,6 +396,7 @@ Promise.all([
         bodyEl.innerHTML = '';
         div.style.height = '48px';
         div.style.padding = '6px 10px';
+        div.style.pointerEvents = 'auto';
         return;
       }
       bodyEl.innerHTML = `
@@ -712,16 +735,21 @@ ${sheetData}
 
     div.appendChild(headerEl);
     div.appendChild(bodyEl);
+    setTimeout(() => {
+        document.getElementById('bottomPanelContainer').appendChild(div);
+    }, 0);
     return div;
   };
   pastDueCtrl.addTo(map);
 
   /* ===================================================================
-   Search Panel (unchanged except for minor safety)
+   Search Panel
   =================================================================== */
-  const searchCtrl = L.control({ position: 'topleft' });
+  const searchCtrl = L.control({ position: 'bottomleft' });
   searchCtrl.onAdd = function () {
     const div = L.DomUtil.create('div');
+    L.DomEvent.disableScrollPropagation(div);
+    L.DomEvent.disableClickPropagation(div);
     div.id = 'searchPanel';
     Object.assign(div.style, {
       background: 'rgba(255,255,255,0.95)',
@@ -758,6 +786,7 @@ ${sheetData}
         bodyEl.innerHTML = '';
         div.style.height = '48px';
         div.style.padding = '6px 10px';
+        div.style.pointerEvents = 'auto';
         return;
       }
       bodyEl.innerHTML = `
@@ -842,6 +871,9 @@ ${sheetData}
 
     div.appendChild(headerEl);
     div.appendChild(bodyEl);
+    setTimeout(() => {
+        document.getElementById('bottomPanelContainer').appendChild(div);
+    }, 0);
     return div;
   };
   searchCtrl.addTo(map);
