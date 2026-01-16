@@ -7,22 +7,18 @@ var map = L.map('map', {
     zoom: 18,
     minZoom: 18,
     maxZoom: 21,
-
     wheelPxPerZoomLevel: 100,
     zoomSnap: 0,
     zoomDelta: 0.25
 });
 map.doubleClickZoom.disable();
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 L.imageOverlay('Scrapyard.png', [
   [40.79156379934851, -82.54114438096362],
   [40.79571031220616, -82.5323681932691]
 ]).addTo(map);
 
 /* ===================================================================
- CONFIG: Monthly consumption CSV produced by daily_totals.py
- - Must start with "Day,Consumed,Net_Tons,,Pile,Total_Actual,Avg_Daily"
- - Set this to your current month file (same site).
+ Monthly consumption CSV
 =================================================================== */
 const consumptionCsvUrl = 'averageconsumption.csv'; // <-- set per month
 
