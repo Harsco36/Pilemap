@@ -291,9 +291,16 @@ Promise.all([
   // Past Due list (> 6 months)
   const pastDue = [];
   const seenCodes = new Set();
+  const exemptCodes = new Set([
+    "291", "525", "446", "445", "41X", "984", "864",
+    "62U", "62Q", "17X", "17Z", "17S", "32U"
+]);
+
   markers.forEach(marker => {
     const code = extractPileCode(marker.name);
     if (!code) return;
+    const codeUp = code.toUpperCase();
+    if (exemptCodes.has(codeUp)) return
     const s = stockIndex[code];
     if (!s) return;
     const dt = parseMDY(s.last_zero_date);
