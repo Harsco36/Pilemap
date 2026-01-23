@@ -1,5 +1,3 @@
-More specific zoom level, zoom scale bar instead of set intervals
-
 show popups on all visible markers - toggle/timed?
 
 markers popups on mouse hover and not mouse click
