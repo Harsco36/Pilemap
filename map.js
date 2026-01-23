@@ -42,7 +42,6 @@ const iconHBI = L.icon({ iconUrl:'icons/HBI.png',iconSize:[128,128],iconAnchor:[
 const iconFrag = L.icon({ iconUrl:'icons/Frag.png',iconSize:[80,80],iconAnchor:[32,32] });
 const iconAlloys = L.icon({ iconUrl:'icons/Alloys.png',iconSize:[32,32],iconAnchor:[16,16] });
 const iconOther = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
-const iconCoils = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
 const iconBreaking = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
 const iconUnbreakable = L.icon({ iconUrl:'icons/Unbreakable.png',iconSize:[50,50],iconAnchor:[25,25] });
 
@@ -67,7 +66,6 @@ const markerConfig = {
   "Frag": { icon: iconFrag, displayName: "Fragmented Scrap" },
   "Alloys": { icon: iconAlloys, displayName: "Alloys" },
   "Other": { icon: iconOther, displayName: "Other" },
-  "Coils": { icon: iconOther, displayName: "Coils/Cutting" },
   "Breaking": { icon: iconOther, displayName: "Breaking" },
   "Unbreakable": { icon: iconUnbreakable, displayName: "Unbreakable" }
 };
@@ -202,6 +200,259 @@ Object.keys(loadCellMarkers).forEach(id => {
     if (banner && d) banner.textContent = `Inventory data current as of ${d}`;
   }).catch(err => console.warn('stockData.json meta fetch failed:', err));
 })();
+
+
+/* ===================================================================
+   BURNING STATION  — stand-alone (not in markers.json / overlay)
+   =================================================================== */
+
+// 1) Config -----------------------------------------------------------
+const burningCsvUrl = 'BurningTotals.csv';
+const burningLatLng = [40.79365495632949, -82.53501357377355];
+
+// 2) Cache + helpers --------------------------------------------------
+let burningCache = { at: 0, data: null };
+
+function fmtInt(n)  { return (typeof n === 'number' && isFinite(n)) ? Math.round(n).toLocaleString('en-US') : '—'; }
+function fmtTons(n, d = 3) { return (typeof n === 'number' && isFinite(n)) ? n.toFixed(d) : '—'; }
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+// IMPORTANT: correct decode
+function unescapeAngles(s) {
+  return String(s)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+// 3) CSV loader -------------------------------------------------------
+async function fetchBurningTotals(force = false) {
+  const now = Date.now();
+  if (!force && burningCache.data && (now - burningCache.at) < 120000) {
+    return burningCache.data;
+  }
+
+  const res = await fetch(burningCsvUrl, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Failed to fetch ${burningCsvUrl}: ${res.status}`);
+  const text = await res.text();
+
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (!lines.length) throw new Error('BurningTotals.csv is empty.');
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const p = lines[i].split(',');
+    if (p.length < 7) continue;
+
+    const dateStr = (p[0] || '').trim();
+    if (!dateStr) continue;
+
+    const dt = new Date(dateStr);
+    if (!isFinite(dt.getTime())) continue;
+
+    const num = v => {
+      const x = Number((v || '').trim());
+      return Number.isFinite(x) ? x : null;
+    };
+
+    rows.push({
+      date: dt,
+      dateLabel: dateStr,
+      netLbs: num(p[1]),
+      from: (p[2] || '').trim(),
+      to: (p[3] || '').trim(),
+      netTons: num(p[4]),
+      cuts: num(p[5]),
+      billableTons: num(p[6])
+    });
+  }
+
+  rows.sort((a,b)=>b.date-a.date);
+
+  let totalLbs = 0, totalTons = 0, totalCuts = 0, totalBillable = 0, latest=null;
+  for (const r of rows) {
+    totalLbs      += r.netLbs || 0;
+    totalTons     += r.netTons || 0;
+    totalCuts     += r.cuts   || 0;
+    totalBillable += r.billableTons || 0;
+    if (!latest || r.date > latest) latest = r.date;
+  }
+
+  const payload = {
+    rows,
+    totals: { netLbs: totalLbs, netTons: totalTons, cuts: totalCuts, billableTons: totalBillable },
+    latestDateLabel: latest ? latest.toISOString().slice(0,10) : '—'
+  };
+
+  burningCache = { at: now, data: payload };
+  return payload;
+}
+
+// 4) Popup rendering (template string; not JSX) ----------------------
+function renderBurningPopup(payload) {
+  if (!payload) {
+    return '&lt;b&gt;Burning Station&lt;/b&gt;&lt;div&gt;No data.&lt;/div&gt;';
+  }
+
+  const t = payload.totals;
+
+  // Summary section (correct)
+  const summary = `
+    &lt;div style="margin-bottom:8px"&gt;
+      &lt;table style="width:100%;font-size:12px;line-height:1.3;border-collapse:collapse"&gt;
+        &lt;tr&gt;
+          &lt;td style="color:#666;padding:2px 6px"&gt;Total Net (tons)&lt;/td&gt;
+          &lt;td style="text-align:right;padding:2px 6px"&gt;&lt;b&gt;${fmtTons(t.netTons)}&lt;/b&gt;&lt;/td&gt;
+        &lt;/tr&gt;
+        &lt;tr&gt;
+          &lt;td style="color:#666;padding:2px 6px"&gt;Billable Tons&lt;/td&gt;
+          &lt;td style="text-align:right;padding:2px 6px"&gt;&lt;b&gt;${fmtTons(t.billableTons)}&lt;/b&gt;&lt;/td&gt;
+        &lt;/tr&gt;
+      &lt;/table&gt;
+    &lt;/div&gt;
+  `;
+
+  // Removed REFRESH completely — nothing here now
+  const actions = ``;
+
+  // ALL activity rows
+  const rowsHtml = payload.rows.map(r => `
+    &lt;tr&gt;
+      &lt;td style="padding:2px 6px;white-space:nowrap"&gt;${esc(r.dateLabel)}&lt;/td&gt;
+      &lt;td style="padding:2px 6px"&gt;${esc(r.from)} → ${esc(r.to)}&lt;/td&gt;
+      &lt;td style="padding:2px 6px;text-align:right"&gt;${fmtTons(r.netTons)}&lt;/td&gt;
+      &lt;td style="padding:2px 6px;text-align:right"&gt;${fmtInt(r.cuts)}&lt;/td&gt;
+      &lt;td style="padding:2px 6px;text-align:right"&gt;${fmtTons(r.billableTons)}&lt;/td&gt;
+    &lt;/tr&gt;
+  `).join('');
+
+  // Activity section
+  const activity = `
+  &lt;div id="burningActivity" style="display:none"&gt;
+      &lt;table style="width:100%;font-size:12px;border-collapse:collapse"&gt;
+        &lt;thead&gt;
+          &lt;tr style="background:#f2f2f2"&gt;
+            &lt;th style="text-align:left;padding:2px 6px"&gt;Date&lt;/th&gt;
+            &lt;th style="text-align:left;padding:2px 6px"&gt;From → To&lt;/th&gt;
+            &lt;th style="text-align:right;padding:2px 6px"&gt;NetTons&lt;/th&gt;
+            &lt;th style="text-align:right;padding:2px 6px"&gt;Cuts&lt;/th&gt;
+            &lt;th style="text-align:right;padding:2px 6px"&gt;Billable&lt;/th&gt;
+          &lt;/tr&gt;
+        &lt;/thead&gt;
+        &lt;tbody&gt;${rowsHtml}&lt;/tbody&gt;
+      &lt;/table&gt;
+    &lt;/div&gt;
+
+    &lt;div style="margin-top:6px; display:flex; gap:6px; align-items:center"&gt;
+      &lt;button type="button" id="burningToggle"
+        style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer"&gt;
+        Show activity
+      &lt;/button&gt;
+
+      &lt;button type="button" id="burningDownload"
+        style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer; display:none"&gt;
+        Download CSV
+      &lt;/button&gt;
+    &lt;/div&gt;
+  `;
+
+  // Clean body — **no leftover encoded </div>**
+  const body = `
+    &lt;div style="font-weight:700;margin-bottom:6px"&gt;Burning Station&lt;/div&gt;
+    ${summary}
+    ${activity}
+  `;
+
+  // Correctly encoded return — nothing trailing
+  return `&lt;div style="min-width:300px"&gt;${body}&lt;/div&gt;`;
+}
+
+// 5) Wire popup events ------------------------------------------------
+function wireBurningPopupEvents(container, marker) {
+  const refresh = container.querySelector('#burningRefresh');
+  const toggle  = container.querySelector('#burningToggle');
+  const block   = container.querySelector('#burningActivity');
+  const dlBtn   = container.querySelector('#burningDownload');
+
+  if (refresh) {
+    refresh.addEventListener('click', async e => {
+      e.preventDefault(); e.stopPropagation();
+      try {
+        const data = await fetchBurningTotals(true);
+        const encoded = renderBurningPopup(data);
+        const decoded = unescapeAngles(encoded);
+        marker.setPopupContent(decoded);
+
+        setTimeout(() => {
+          const el = marker.getPopup()?.getElement();
+          if (el) wireBurningPopupEvents(el, marker);
+        }, 0);
+
+      } catch (err) { console.error(err); }
+    });
+  }
+
+  if (toggle && block) {
+    toggle.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const hidden = block.style.display === 'none';
+      block.style.display = hidden ? '' : 'none';
+      toggle.textContent = hidden ? 'Hide activity' : 'Show activity';
+      if (dlBtn) dlBtn.style.display = hidden ? '' : 'none';
+    });
+
+    block.addEventListener('click', e => e.stopPropagation());
+  }
+
+  if (dlBtn) {
+    dlBtn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const a = document.createElement('a');
+      a.href = burningCsvUrl;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+  }
+}
+
+// 6) clickable marker --------------------------------------
+const burningArea = L.circleMarker(burningLatLng, {
+  radius: 18,
+  color: 'rgba(255,255,0,0.01)',
+  fillColor: 'rgba(0,0,0,0.01)',
+  fillOpacity: 0.01,
+  weight: 12
+}).addTo(map);
+
+burningArea.bindPopup('', { maxWidth: 420, autopan: false });
+
+burningArea.on('popupopen', async () => {
+  burningArea.setPopupContent('&lt;div style="min-width:300px"&gt;Loading…&lt;/div&gt;');
+  try {
+    const payload = await fetchBurningTotals();
+    const encoded = renderBurningPopup(payload);
+    const decoded = unescapeAngles(encoded);
+    burningArea.setPopupContent(decoded);
+
+    setTimeout(() => {
+      const el = burningArea.getPopup()?.getElement();
+      if (el) wireBurningPopupEvents(el, burningArea);
+    }, 0);
+
+  } catch (err) {
+    console.error(err);
+    burningArea.setPopupContent('&lt;b&gt;Burning Station&lt;/b&gt;&lt;div style="color:#c00"&gt;Failed to load BurningTotals.csv.&lt;/div&gt;');
+  }
+});
+``
 
 /* ===================================================================
  LOAD MARKERS + ENRICH POPUPS
