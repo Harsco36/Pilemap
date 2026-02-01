@@ -42,8 +42,6 @@ const iconHBI = L.icon({ iconUrl:'icons/HBI.png',iconSize:[128,128],iconAnchor:[
 const iconFrag = L.icon({ iconUrl:'icons/Frag.png',iconSize:[80,80],iconAnchor:[32,32] });
 const iconAlloys = L.icon({ iconUrl:'icons/Alloys.png',iconSize:[32,32],iconAnchor:[16,16] });
 const iconOther = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
-const iconBreaking = L.icon({ iconUrl:'icons/Other.png',iconSize:[96,96],iconAnchor:[48,48] });
-const iconUnbreakable = L.icon({ iconUrl:'icons/Unbreakable.png',iconSize:[50,50],iconAnchor:[25,25] });
 
 /* ===================================================================
  MATERIAL MARKER CONFIG
@@ -66,8 +64,6 @@ const markerConfig = {
   "Frag": { icon: iconFrag, displayName: "Fragmented Scrap" },
   "Alloys": { icon: iconAlloys, displayName: "Alloys" },
   "Other": { icon: iconOther, displayName: "Other" },
-  "Breaking": { icon: iconOther, displayName: "Breaking" },
-  "Unbreakable": { icon: iconUnbreakable, displayName: "Unbreakable" }
 };
 Object.keys(markerConfig).forEach(type =>
   markerConfig[type].layer = L.layerGroup().addTo(map)
@@ -81,7 +77,7 @@ bottomContainer.onAdd = function () {
     div.id = 'bottomPanelContainer';
     Object.assign(div.style, {
         display: 'flex',
-        flexDirection: 'row',
+        flexDirection: 'column',
         gap: '10px',
         margin: '10px',
         width: 'auto',
@@ -92,6 +88,22 @@ bottomContainer.onAdd = function () {
     return div;
 };
 bottomContainer.addTo(map);
+ 
+// ===== Simple accordion coordinator for the two panels =====
+window.yardPanels = window.yardPanels || {};
+function registerPanel(id, api) { window.yardPanels[id] = api; }
+function collapseOthers(exceptId) {
+  Object.entries(window.yardPanels).forEach(([id, api]) => {
+    if (id !== exceptId && api && typeof api.isExpanded === 'function' &&
+        api.isExpanded() && typeof api.collapse === 'function') {
+      api.collapse();
+    }
+  });
+}
+
+let allMarkersData = [];
+let stockIndexGlobal = {};
+
 /* ===================================================================
  ATTENTION "PING" EFFECT
 =================================================================== */
@@ -209,12 +221,16 @@ Object.keys(loadCellMarkers).forEach(id => {
 // 1) Config -----------------------------------------------------------
 const burningCsvUrl = 'BurningTotals.csv';
 const burningLatLng = [40.79365495632949, -82.53501357377355];
+const breakingCsvUrl = 'BreakingTotals.csv';
+const breakingLatLng = [40.79408763021845, -82.5388475264302];
 
 // 2) Cache + helpers --------------------------------------------------
 let burningCache = { at: 0, data: null };
+let breakingCache = { at: 0, data: null };
 
 function fmtInt(n)  { return (typeof n === 'number' && isFinite(n)) ? Math.round(n).toLocaleString('en-US') : '—'; }
 function fmtTons(n, d = 3) { return (typeof n === 'number' && isFinite(n)) ? n.toFixed(d) : '—'; }
+function fmtTons2(n, d = 2) { return (typeof n === 'number' && isFinite(n)) ? n.toFixed(d) : '—'; }
 
 function esc(s) {
   return String(s ?? '')
@@ -293,32 +309,280 @@ async function fetchBurningTotals(force = false) {
   return payload;
 }
 
-// 4) Popup rendering (template string; not JSX) ----------------------
-function renderBurningPopup(payload) {
+async function fetchBreakingTotals(force = false) {
+  const now = Date.now();
+  if (!force && breakingCache.data && (now - breakingCache.at) < 120000) {
+    return breakingCache.data;
+  }
+  const res = await fetch(breakingCsvUrl, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Failed to fetch ${breakingCsvUrl}: ${res.status}`);
+
+  const text = await res.text();
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (!lines.length) throw new Error('BreakingTotals.csv is empty.');
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const p = lines[i].split(',');
+    if (p.length < 5) continue;
+
+    const dateStr = (p[0] || '').trim();
+    if (!dateStr) continue;
+    const dt = new Date(dateStr);
+    if (!isFinite(dt.getTime())) continue;
+
+    const num = v => {
+      const x = Number((v || '').trim());
+      return Number.isFinite(x) ? x : null;
+    };
+
+    const from = (p[2] || '').trim();
+    const to = (p[3] || '').trim();
+    const netTons = num(p[4]);
+    const material = (p[7] || '').trim(); // optional; use if present
+
+    rows.push({ date: dt, dateLabel: dateStr, from, to, netTons, material });
+  }
+
+  rows.sort((a,b) => b.date - a.date);
+
+  // Summaries
+  const nowD = new Date();
+  const Y = nowD.getFullYear(), M = nowD.getMonth();
+  const monthRows = rows.filter(r => r.date.getFullYear() === Y && r.date.getMonth() === M);
+  const totalMonthTons = monthRows.reduce((a, r) => a + (r.netTons || 0), 0);
+  const materialsTouched = Array.from(new Set(
+    monthRows.map(r => (r.material || '').trim()).filter(Boolean)
+  )).sort();
+
+  const payload = {
+    rows,
+    month: {
+      year: Y,
+      monthIndex: M, // 0..11
+      totalMonthTons,
+      materialsTouched,
+      rowCount: monthRows.length
+    }
+  };
+  breakingCache = { at: now, data: payload };
+  return payload;
+}
+
+// 4) Popup rendering
+
+  function extractPileCode(name) {
+    if (!name) return null;
+    const m = name.match(/^[A-Za-z0-9]+/); // leading alphanumerics (e.g., "62U" from "62U Unbreakable")
+    return m ? m[0] : null;
+  }
+
+function buildUnprepRows(markers, stockIndex) {
+  return markers
+    .filter(m => m.type === "Breaking" || m.type === "Unbreakable")
+    .map(m => {
+      const code = extractPileCode(m.name);
+      const s = (code && stockIndex[code]) ? stockIndex[code] : {};
+      const inv = s.operating_inventory_lbs ?? 0;
+      const lastZero = s.last_zero_date ?? '—';
+      return `
+        <tr>
+          <td style="padding:2px 6px">${m.name}</td>
+          <td style="padding:2px 6px;text-align:right">${inv.toLocaleString('en-US')}</td>
+          <td style="padding:2px 6px">${lastZero}</td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+function buildCoilsRows(markers, stockIndex) {
+  return markers
+    .filter(m => m.type === "Coils")
+    .map(m => {
+      const code = extractPileCode(m.name);
+      const stock = stockIndex[code] || {};
+      const inv = stock.operating_inventory_lbs ?? 0;
+      const lastZero = stock.last_zero_date ?? '—';
+
+      return `
+        <tr>
+          <td style="padding:2px 6px">${m.name}</td>
+          <td style="padding:2px 6px;text-align:right">${inv.toLocaleString()}</td>
+          <td style="padding:2px 6px">${lastZero}</td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+function getUnprepTotalInventory(markers, stockIndex) {
+  let total = 0;
+  for (const m of markers) {
+    if (m.type !== "Breaking" && m.type !== "Unbreakable") continue;
+    const code = extractPileCode(m.name);
+    if (!code) continue;
+    const s = stockIndex[code];
+    const v = (s && typeof s.operating_inventory_lbs === 'number') ? s.operating_inventory_lbs : 0;
+    total += v;
+  }
+  return total;
+}
+
+function getCoilsTotalInventory(markers, stockIndex) {
+  let total = 0;
+  for (const m of markers) {
+    if (m.type !== "Coils") continue;
+    const code = extractPileCode(m.name);
+    if (!code) continue;
+    const s = stockIndex[code];
+    const v = (s && typeof s.operating_inventory_lbs === 'number') ? s.operating_inventory_lbs : 0;
+    total += v;
+  }
+  return total;
+}
+``
+
+function renderBreakingPopup(payload, markers, stockIndex) {
+  if (!payload) {
+    return '<b>Breaking Pit</b><div>No data.</div>';
+  }
+
+  // Monthly summary pieces
+  const monthTons = payload.month.totalMonthTons;
+  const monthTonsText = fmtTons2(monthTons, 2);
+  const materials = payload.month.materialsTouched;
+  const materialsText = materials.length ? materials.join(', ') : '—';
+  const unprepTotalLbs = getUnprepTotalInventory(markers, stockIndex);
+  const unprepLbsText  = isFinite(unprepTotalLbs) ? unprepTotalLbs.toLocaleString('en-US') : '—';
+  const unprepTonsText = isFinite(unprepTotalLbs) ? (unprepTotalLbs / 2000).toFixed(2) : '—';
+
+  // Summary block
+  const summary = `
+    <div style="margin-bottom:8px">
+      <table style="width:100%;font-size:12px;line-height:1.3;border-collapse:collapse">
+        <tr>
+          <td style="color:#666;padding:2px 6px">Total Unprep Inventory</td>
+          <td style="text-align:right;padding:2px 6px"><b>${unprepLbsText}</b> <span style="color:#555">(${unprepTonsText} tons)</span></td>
+        </tr>
+        <tr>
+          <td style="color:#666;padding:2px 6px">Total Processed(net tons)</td>
+          <td style="text-align:right;padding:2px 6px"><b>${monthTonsText}</b></td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  // Activity rows (you can choose monthRows only; here we show ALL rows like Burning)
+  const rowsHtml = payload.rows.map(r => `
+    <tr>
+      <td style="padding:2px 6px;white-space:nowrap">${esc(r.dateLabel)}</td>
+      <td style="padding:2px 6px">${esc(r.from)} → ${esc(r.to)}</td>
+      <td style="padding:2px 6px;text-align:right">${fmtTons2(r.netTons, 3)}</td>
+      <td style="padding:2px 6px">${esc(r.material || '')}</td>
+    </tr>
+  `).join('');
+
+  const activity = `
+  <div id="breakingActivity" style="display:none">
+    <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <thead>
+        <tr style="background:#f2f2f2">
+          <th style="text-align:left;padding:2px 6px">Date</th>
+          <th style="text-align:left;padding:2px 6px">From → To</th>
+          <th style="text-align:right;padding:2px 6px">NetTons</th>
+          <th style="text-align:left;padding:2px 6px">Material</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:6px; display:flex; gap:6px; align-items:center">
+    <button type="button" id="breakingToggle"
+      style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer">
+      Show Activity
+    </button>
+
+    <!-- Top Unprep toggle (like CoilsTop) -->
+    <button type="button" id="unprepToggleTop"
+      style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer">
+      Show Unprep
+    </button>
+  </div>
+  `;
+
+  // Unprep section + bottom button (mirrors coils section)
+  const unprepRowsHtml = buildUnprepRows(markers, stockIndex);
+  const unprepSection = `
+  <div id="unprepSection" style="display:none;margin-top:8px">
+    <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <thead>
+        <tr style="background:#f2f2f2">
+          <th style="text-align:left;padding:2px 6px">Pile</th>
+          <th style="text-align:right;padding:2px 6px">Inventory (lbs)</th>
+          <th style="text-align:left;padding:2px 6px">Last Zero</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${unprepRowsHtml}
+      </tbody>
+    </table>
+    <div style="margin-top:6px; display:flex; justify-content:flex-end">
+      <button type="button" id="unprepToggleBottom"
+        style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer">
+        Hide Unprep
+      </button>
+    </div>
+  </div>
+  `;
+
+  const body = `
+    <div style="font-weight:700;margin-bottom:6px">Breaking Pit</div>
+    ${summary}
+    ${activity}
+    ${unprepSection}
+  `;
+  return `<div style="min-width:300px">${body}</div>`;
+}
+
+function renderBurningPopup(payload, markers, stockIndex) {
   if (!payload) {
     return '&lt;b&gt;Burning Station&lt;/b&gt;&lt;div&gt;No data.&lt;/div&gt;';
   }
 
   const t = payload.totals;
+  const coilsRowsHtml = buildCoilsRows(markers, stockIndex);
+  const coilsInvLbs = getCoilsTotalInventory(markers, stockIndex);
+  const coilsInvText = (typeof coilsInvLbs === 'number' && isFinite(coilsInvLbs))
+    ? coilsInvLbs.toLocaleString('en-US')
+    : '—';
 
-  // Summary section (correct)
-  const summary = `
-    &lt;div style="margin-bottom:8px"&gt;
-      &lt;table style="width:100%;font-size:12px;line-height:1.3;border-collapse:collapse"&gt;
-        &lt;tr&gt;
-          &lt;td style="color:#666;padding:2px 6px"&gt;Total Net (tons)&lt;/td&gt;
-          &lt;td style="text-align:right;padding:2px 6px"&gt;&lt;b&gt;${fmtTons(t.netTons)}&lt;/b&gt;&lt;/td&gt;
-        &lt;/tr&gt;
-        &lt;tr&gt;
-          &lt;td style="color:#666;padding:2px 6px"&gt;Billable Tons&lt;/td&gt;
-          &lt;td style="text-align:right;padding:2px 6px"&gt;&lt;b&gt;${fmtTons(t.billableTons)}&lt;/b&gt;&lt;/td&gt;
-        &lt;/tr&gt;
-      &lt;/table&gt;
-    &lt;/div&gt;
-  `;
+  // Show tons to two decimals if we have a numeric value
+  const coilsInvTonsText = (typeof coilsInvLbs === 'number' && isFinite(coilsInvLbs))
+    ? (coilsInvLbs / 2000).toFixed(2)
+    : '—';
 
-  // Removed REFRESH completely — nothing here now
-  const actions = ``;
+  // Summary section
+
+const summary = `
+  <div style="margin-bottom:8px">
+    <table style="width:100%;font-size:12px;line-height:1.3;border-collapse:collapse">
+      <tr>
+        <td style="color:#666;padding:2px 6px">Total Coil Inventory</td>
+        <td style="text-align:right;padding:2px 6px"><b>${coilsInvText}</b> <span style="color:#555">(${coilsInvTonsText} tons)</span></td>
+      </tr>
+      <tr>
+        <td style="color:#666;padding:2px 6px">Net Tons Cut</td>
+        <td style="text-align:right;padding:2px 6px"><b>${fmtTons(t.netTons)}</b></td>
+      </tr>
+      <tr>
+        <td style="color:#666;padding:2px 6px">Billable Tons Cut</td>
+        <td style="text-align:right;padding:2px 6px"><b>${fmtTons(t.billableTons)}</b></td>
+      </tr>
+    </table>
+  </div>
+`;
 
   // ALL activity rows
   const rowsHtml = payload.rows.map(r => `
@@ -351,40 +615,220 @@ function renderBurningPopup(payload) {
     &lt;div style="margin-top:6px; display:flex; gap:6px; align-items:center"&gt;
       &lt;button type="button" id="burningToggle"
         style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer"&gt;
-        Show activity
+        Show Activity
       &lt;/button&gt;
 
       &lt;button type="button" id="burningDownload"
         style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer; display:none"&gt;
         Download CSV
       &lt;/button&gt;
-    &lt;/div&gt;
+
+      &lt;button type="button" id="coilsToggleTop"
+        style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer"&gt;
+        Show Coils
+      &lt;/button&gt;
+  &lt;/div&gt;
   `;
 
-  // Clean body — **no leftover encoded </div>**
+  const coilsSection = `
+  <div id="coilsSection" style="display:none;margin-top:8px">
+    <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <thead>
+        <tr style="background:#f2f2f2">
+          <th style="text-align:left;padding:2px 6px">Pile</th>
+          <th style="text-align:right;padding:2px 6px">Inventory (lbs)</th>
+          <th style="text-align:left;padding:2px 6px">Last Zero</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${coilsRowsHtml}
+      </tbody>
+    </table>
+    <div style="margin-top:6px; display:flex; justify-content:flex-end">
+      <button type="button" id="coilsToggleBottom"
+        style="padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#f8f8f8;cursor:pointer">
+        Hide Coils
+      </button>
+    </div>
+  </div>
+`;
+
+
   const body = `
     &lt;div style="font-weight:700;margin-bottom:6px"&gt;Burning Station&lt;/div&gt;
     ${summary}
     ${activity}
+    ${coilsSection}
   `;
 
-  // Correctly encoded return — nothing trailing
   return `&lt;div style="min-width:300px"&gt;${body}&lt;/div&gt;`;
 }
 
 // 5) Wire popup events ------------------------------------------------
+
+function wireBreakingPopupEvents(container, marker) {
+  // Activity
+  const activityToggle = container.querySelector('#breakingToggle');
+  const activityBlock  = container.querySelector('#breakingActivity');
+
+  // Unprep top/bottom buttons + section
+  const unprepTopBtn = container.querySelector('#unprepToggleTop');
+  const unprepBtmBtn = container.querySelector('#unprepToggleBottom');
+  const unprepDiv    = container.querySelector('#unprepSection');
+
+  // ---- helpers ----
+  function setUnprepState(show) {
+    if (!unprepDiv) return;
+    unprepDiv.style.display = show ? 'block' : 'none';
+    if (unprepTopBtn) {
+      unprepTopBtn.textContent = show ? 'Hide Unprep' : 'Show Unprep';
+      unprepTopBtn.style.display = show ? 'none' : ''; // hide top button when open
+    }
+    if (unprepBtmBtn) {
+      unprepBtmBtn.textContent = show ? 'Hide Unprep' : 'Show Unprep';
+    }
+    // hide Activity button while Unprep is open (mirroring Burning)
+    if (activityToggle) activityToggle.style.display = show ? 'none' : '';
+  }
+
+  // Initialize unprep (hidden by default)
+  if (unprepDiv && (unprepTopBtn || unprepBtmBtn)) {
+    setUnprepState(unprepDiv.style.display === 'block');
+    const onUnprepClick = () => {
+      const showing = unprepDiv.style.display === 'block';
+      setUnprepState(!showing);
+    };
+    if (unprepTopBtn) unprepTopBtn.addEventListener('click', onUnprepClick);
+    if (unprepBtmBtn) unprepBtmBtn.addEventListener('click', onUnprepClick);
+  }
+
+  // Activity toggle (mirrors your Burning Activity wiring)
+  if (activityToggle && activityBlock) {
+    if (activityBlock.style.display === '') activityBlock.style.display = 'none';
+    activityToggle.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const hidden = activityBlock.style.display === 'none';
+      if (hidden) {
+        activityBlock.style.display = '';
+        activityToggle.textContent = 'Hide Activity';
+        if (unprepTopBtn) unprepTopBtn.style.display = 'none';
+      } else {
+        activityBlock.style.display = 'none';
+        activityToggle.textContent = 'Show Activity';
+        // only re-show top unprep button if unprep section is closed
+        if (unprepTopBtn && (!unprepDiv || unprepDiv.style.display !== 'block')) {
+          unprepTopBtn.style.display = '';
+        }
+      }
+    });
+    activityBlock.addEventListener('click', e => e.stopPropagation());
+  }
+}
+
 function wireBurningPopupEvents(container, marker) {
   const refresh = container.querySelector('#burningRefresh');
-  const toggle  = container.querySelector('#burningToggle');
-  const block   = container.querySelector('#burningActivity');
-  const dlBtn   = container.querySelector('#burningDownload');
 
+  // Activity pieces
+  const toggle = container.querySelector('#burningToggle');        // Activity toggle button
+  const block  = container.querySelector('#burningActivity');      // Activity section
+
+  // Coils pieces (TOP button in control row, BOTTOM button in coils footer)
+  const coilsTopBtn = container.querySelector('#coilsToggleTop');
+  const coilsBtmBtn = container.querySelector('#coilsToggleBottom');
+  const coilsDiv    = container.querySelector('#coilsSection');
+
+  // Download button
+  const dlBtn = container.querySelector('#burningDownload');
+
+  // ---------- Helpers ----------
+  function isActivityShown() {
+    return block && block.style.display !== 'none';
+  }
+  function isCoilsShown() {
+    return coilsDiv && coilsDiv.style.display === 'block';
+  }
+  function setDownloadVisibility() {
+    // Show download only when Activity is visible and Coils is not open
+    if (!dlBtn) return;
+    dlBtn.style.display = (isActivityShown() && !isCoilsShown()) ? '' : 'none';
+  }
+
+  // ---------- Coils toggle logic (sync top & bottom buttons) ----------
+  function setCoilsState(show) {
+    if (!coilsDiv) return;
+
+    // Section visibility
+    coilsDiv.style.display = show ? 'block' : 'none';
+
+    // Button labels & visibility
+    if (coilsTopBtn) {
+      coilsTopBtn.textContent = show ? 'Hide Coils' : 'Show Coils';
+      // Hide the TOP button while coils section is open (the bottom one is available)
+      coilsTopBtn.style.display = show ? 'none' : '';
+    }
+    if (coilsBtmBtn) {
+      coilsBtmBtn.textContent = show ? 'Hide Coils' : 'Show Coils';
+      // Bottom button lives inside the section; appears automatically when open
+    }
+
+    // Hide the Activity toggle while Coils are open (matches your prior UX)
+    if (toggle) toggle.style.display = show ? 'none' : '';
+
+    // Update Download button visibility based on new state
+    setDownloadVisibility();
+  }
+
+  if (coilsDiv && (coilsTopBtn || coilsBtmBtn)) {
+    // Initialize coils state (template starts hidden)
+    setCoilsState(coilsDiv.style.display === 'block');
+
+    const onCoilsClick = () => {
+      const showing = coilsDiv.style.display === 'block';
+      setCoilsState(!showing);
+    };
+    if (coilsTopBtn) coilsTopBtn.addEventListener('click', onCoilsClick);
+    if (coilsBtmBtn) coilsBtmBtn.addEventListener('click', onCoilsClick);
+  }
+
+  // ---------- Activity toggle logic ----------
+  if (toggle && block) {
+    // Ensure initial state is hidden (as per your template), then set initial download visibility
+    if (block.style.display === '') block.style.display = 'none';
+    setDownloadVisibility();
+
+    toggle.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const hidden = block.style.display === 'none';
+
+      if (hidden) {
+        // Show Activity, hide coils TOP button to avoid competing toggles
+        block.style.display = '';
+        toggle.textContent = 'Hide Activity';
+        if (coilsTopBtn) coilsTopBtn.style.display = 'none';
+      } else {
+        // Hide Activity, re-show coils TOP button only if coils are not open
+        block.style.display = 'none';
+        toggle.textContent = 'Show Activity';
+        if (coilsTopBtn && !isCoilsShown()) coilsTopBtn.style.display = '';
+      }
+
+      // Update Download visibility after toggling Activity
+      setDownloadVisibility();
+    });
+
+    block.addEventListener('click', e => e.stopPropagation());
+  } else {
+    // If there's no activity block/toggle, make sure download is hidden
+    if (dlBtn) dlBtn.style.display = 'none';
+  }
+
+  // ---------- Refresh logic ----------
   if (refresh) {
     refresh.addEventListener('click', async e => {
       e.preventDefault(); e.stopPropagation();
       try {
         const data = await fetchBurningTotals(true);
-        const encoded = renderBurningPopup(data);
+        const encoded = renderBurningPopup(data, allMarkersData, stockIndexGlobal);
         const decoded = unescapeAngles(encoded);
         marker.setPopupContent(decoded);
 
@@ -392,23 +836,11 @@ function wireBurningPopupEvents(container, marker) {
           const el = marker.getPopup()?.getElement();
           if (el) wireBurningPopupEvents(el, marker);
         }, 0);
-
       } catch (err) { console.error(err); }
     });
   }
 
-  if (toggle && block) {
-    toggle.addEventListener('click', e => {
-      e.preventDefault(); e.stopPropagation();
-      const hidden = block.style.display === 'none';
-      block.style.display = hidden ? '' : 'none';
-      toggle.textContent = hidden ? 'Hide activity' : 'Show activity';
-      if (dlBtn) dlBtn.style.display = hidden ? '' : 'none';
-    });
-
-    block.addEventListener('click', e => e.stopPropagation());
-  }
-
+  // ---------- Download logic ----------
   if (dlBtn) {
     dlBtn.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation();
@@ -431,6 +863,7 @@ const burningArea = L.circleMarker(burningLatLng, {
   fillOpacity: 0.01,
   weight: 12
 }).addTo(map);
+window.burningArea = burningArea;
 
 burningArea.bindPopup('', { maxWidth: 420, autopan: false });
 
@@ -438,7 +871,7 @@ burningArea.on('popupopen', async () => {
   burningArea.setPopupContent('&lt;div style="min-width:300px"&gt;Loading…&lt;/div&gt;');
   try {
     const payload = await fetchBurningTotals();
-    const encoded = renderBurningPopup(payload);
+    const encoded = renderBurningPopup(payload, allMarkersData, stockIndexGlobal);
     const decoded = unescapeAngles(encoded);
     burningArea.setPopupContent(decoded);
 
@@ -452,8 +885,36 @@ burningArea.on('popupopen', async () => {
     burningArea.setPopupContent('&lt;b&gt;Burning Station&lt;/b&gt;&lt;div style="color:#c00"&gt;Failed to load BurningTotals.csv.&lt;/div&gt;');
   }
 });
-``
 
+const breakingArea = L.circleMarker(breakingLatLng, {
+  radius: 18,
+  color: 'rgba(255,255,0,0.01)',
+  fillColor: 'rgba(0,0,0,0.01)',
+  fillOpacity: 0.01,
+  weight: 12
+}).addTo(map);
+window.breakingArea = breakingArea;
+
+breakingArea.bindPopup('', { maxWidth: 420, autopan: false });
+
+breakingArea.on('popupopen', async () => {
+  breakingArea.setPopupContent('<div style="min-width:300px">Loading…</div>');
+  try {
+    const payload = await fetchBreakingTotals();
+    const encoded = renderBreakingPopup(payload, allMarkersData, stockIndexGlobal);
+    const decoded = unescapeAngles(encoded);
+    breakingArea.setPopupContent(decoded);
+
+    setTimeout(() => {
+      const el = breakingArea.getPopup()?.getElement();
+      if (el) wireBreakingPopupEvents(el, breakingArea);
+    }, 0);
+  } catch (err) {
+    console.error(err);
+    breakingArea.setPopupContent('<b>Breaking Pit</b><div style="color:#c00">Failed to load BreakingTotals.csv.</div>');
+  }
+});
+``
 /* ===================================================================
  LOAD MARKERS + ENRICH POPUPS
 =================================================================== */
@@ -461,7 +922,9 @@ Promise.all([
   fetch('markers.json').then(r => r.json()),
   fetch('stockData.json').then(r => r.json())
 ]).then(([markers, stockPayload]) => {
-  const stockIndex = (stockPayload && stockPayload.stock) ? stockPayload.stock : {};
+  allMarkersData = markers;                 // save globally
+  stockIndexGlobal = stockPayload.stock || {};
+  
   const unknownTypes = new Set();
 
   // Helpers
@@ -497,11 +960,6 @@ Promise.all([
     const mPart = months > 0 ? `${months} ${months === 1 ? 'month' : 'months'}` : (years === 0 ? '0 months' : '');
     return yPart && mPart ? `${yPart} ${mPart}` : (yPart || mPart);
   }
-  function extractPileCode(name) {
-    if (!name) return null;
-    const m = name.match(/^[A-Za-z0-9]+/); // leading alphanumerics (e.g., "62U" from "62U Unbreakable")
-    return m ? m[0] : null;
-  }
   function renderPopupHtml(marker, s) {
     if (!s) return `<b>${marker.name}</b>`;
     const invText = (typeof s.operating_inventory_lbs === 'number')
@@ -526,7 +984,7 @@ Promise.all([
     if (!cfg) { unknownTypes.add(marker.type); return; }
     const m = L.marker([marker.lat, marker.lng], { icon: cfg.icon });
     const code = extractPileCode(marker.name);
-    const s = code ? stockIndex[code] : null;
+    const s = code ? stockIndexGlobal[code] : null;
     m.bindPopup('', { maxWidth: 320, autopan: false });
     m.on('popupopen', () => m.setPopupContent(renderPopupHtml(marker, s)));
     cfg.layer.addLayer(m);
@@ -542,17 +1000,28 @@ Promise.all([
   // Past Due list (> 6 months)
   const pastDue = [];
   const seenCodes = new Set();
-  const exemptCodes = new Set([
-    "291", "525", "446", "445", "41X", "984", "864",
-    "62U", "62Q", "17X", "17Z", "17S", "32U"
-]);
+  const exemptTypes = new Set(["Coils", "Breaking", "Unbreakable", "Alloys"]);
+function isPastDueExempt(marker, stockIndex) {
+  if (!marker) return true;
+  if (!exemptTypes.has(marker.type)) return false;
+  if (marker.type === "Alloys") {
+    const name = String(marker.name || "").toLowerCase();
+    const code = extractPileCode(marker.name);
+    const s = code ? stockIndex[code] : null;
+    const material = String((s && s.material) || "").toLowerCase();
+    const isMoOx =
+      name.includes("molybdenum oxide") ||
+      material.includes("molybdenum oxide");
+    return !isMoOx;
+  }
+  return true;
+}
 
   markers.forEach(marker => {
+    if (isPastDueExempt(marker, stockIndexGlobal)) return;
     const code = extractPileCode(marker.name);
     if (!code) return;
-    const codeUp = code.toUpperCase();
-    if (exemptCodes.has(codeUp)) return
-    const s = stockIndex[code];
+    const s = stockIndexGlobal[code];
     if (!s) return;
     const dt = parseMDY(s.last_zero_date);
     if (!dt) return;
@@ -561,6 +1030,7 @@ Promise.all([
       pastDue.push({
         code: code,
         name: marker.name,
+        rawType: marker.type,
         material: s.material || '',
         lastZero: s.last_zero_date,
         ageMonths: mAge,
@@ -629,6 +1099,13 @@ Promise.all([
     const headerEl = document.createElement('div');
     const bodyEl = document.createElement('div');
 
+    
+   // expose simple API to the accordion
+   function isExpanded() { return !collapsed; }
+   function expand()   { if (collapsed) { collapsed = false; renderHeader(); renderBody(); } }
+   function collapse() { if (!collapsed) { collapsed = true;  renderHeader(); renderBody(); } }
+
+
     function renderHeader() {
       headerEl.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between">
@@ -648,7 +1125,7 @@ Promise.all([
     function renderBody() {
       if (collapsed) {
         bodyEl.innerHTML = '';
-        div.style.height = '48px';
+        div.style.height = '24px';
         div.style.padding = '6px 10px';
         div.style.pointerEvents = 'auto';
         return;
@@ -700,11 +1177,21 @@ Promise.all([
               </div>
               <button style="margin-left:8px;padding:2px 6px;border:1px solid #ccc;border-radius:3px;cursor:pointer">Ping</button>
               </div>
-          `;
-          li.addEventListener('click', () => { if (p.marker) { pingMarker(p.marker); } });
+          `;          
+          li.addEventListener('click', () => {
+            const target =
+              (p.rawType === 'Coils' && window.burningArea) ? window.burningArea :
+              ((p.rawType === 'Breaking' || p.rawType === 'Unbreakable') && window.breakingArea) ? window.breakingArea :
+              p.marker;
+            if (target) pingMarker(target);
+          });          
           li.querySelector('button').addEventListener('click', (e) => {
             e.stopPropagation();
-            if (p.marker) { pingMarker(p.marker); }
+            const target =
+              (p.rawType === 'Coils' && window.burningArea) ? window.burningArea :
+              ((p.rawType === 'Breaking' || p.rawType === 'Unbreakable') && window.breakingArea) ? window.breakingArea :
+              p.marker;
+            if (target) pingMarker(target);
           });
           ul.appendChild(li);
         });
@@ -982,15 +1469,19 @@ ${sheetData}
     headerEl.addEventListener('click', (e) => {
       const btn = headerEl.querySelector('#pdToggleBtn');
       if (btn && e.target === btn) { /* keep default */ }
-      collapsed = !collapsed;
-      renderHeader();
-      renderBody();
+     const wasCollapsed = collapsed;
+     collapsed = !collapsed;
+     renderHeader();
+     renderBody();
+     // If we just expanded, collapse the other panel
+     if (!collapsed) collapseOthers('pastDuePanel');
     });
-
     div.appendChild(headerEl);
     div.appendChild(bodyEl);
     setTimeout(() => {
-        document.getElementById('bottomPanelContainer').appendChild(div);
+     document.getElementById('bottomPanelContainer').appendChild(div);
+     // register with accordion after it's in the DOM
+     registerPanel('pastDuePanel', { isExpanded, expand, collapse });
     }, 0);
     return div;
   };
@@ -1020,8 +1511,11 @@ ${sheetData}
     });
     let collapsed = true;
     const headerEl = document.createElement('div');
-    const bodyEl = document.createElement('div');
-
+    const bodyEl = document.createElement('div');    
+   // expose simple API to the accordion
+   function isExpanded() { return !collapsed; }
+   function expand()   { if (collapsed) { collapsed = false; renderHeader(); renderBody(); } }
+   function collapse() { if (!collapsed) { collapsed = true;  renderHeader(); renderBody(); } }
     function renderHeader() {
       headerEl.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between">
@@ -1038,7 +1532,7 @@ ${sheetData}
     function renderBody() {
       if (collapsed) {
         bodyEl.innerHTML = '';
-        div.style.height = '48px';
+        div.style.height = '24px';
         div.style.padding = '6px 10px';
         div.style.pointerEvents = 'auto';
         return;
@@ -1058,12 +1552,13 @@ ${sheetData}
 
       const allPiles = markers.map(m => {
         const code = extractPileCode(m.name);
-        const s = code ? stockIndex[code] : null;
+        const s = code ? stockIndexGlobal[code] : null;
         const typeLabel = (markerConfig[m.type] && markerConfig[m.type].displayName) ? markerConfig[m.type].displayName : (m.type || '');
         return {
           code,
           name: m.name,
-          type: typeLabel,
+          type: typeLabel,       // display name
+          rawType: m.type,       // <-- add this raw type key
           material: (s && s.material) ? s.material : '',
           marker: m._leaflet
         };
@@ -1100,11 +1595,21 @@ ${sheetData}
               </div>
               <button style="margin-left:8px;padding:2px 6px;border:1px solid #ccc;border-radius:3px;cursor:pointer">Ping</button>
             </div>
-          `;
-          li.addEventListener('click', () => { if (p.marker) { pingMarker(p.marker); } });
+          `; 
+          li.addEventListener('click', () => {
+            const target =
+              (p.rawType === 'Coils' && window.burningArea) ? window.burningArea :
+              ((p.rawType === 'Breaking' || p.rawType === 'Unbreakable') && window.breakingArea) ? window.breakingArea :
+              p.marker;
+            if (target) pingMarker(target);
+          });      
           li.querySelector('button').addEventListener('click', (e) => {
             e.stopPropagation();
-            if (p.marker) { pingMarker(p.marker); }
+            const target =
+              (p.rawType === 'Coils' && window.burningArea) ? window.burningArea :
+              ((p.rawType === 'Breaking' || p.rawType === 'Unbreakable') && window.breakingArea) ? window.breakingArea :
+              p.marker;
+            if (target) pingMarker(target);
           });
           ul.appendChild(li);
         });
@@ -1118,15 +1623,25 @@ ${sheetData}
     headerEl.addEventListener('click', (e) => {
       const btn = headerEl.querySelector('#srchToggleBtn');
       if (btn && e.target === btn) { /* keep default */ }
-      collapsed = !collapsed;
-      renderHeader();
-      renderBody();
+     const wasCollapsed = collapsed;
+     collapsed = !collapsed;
+     renderHeader();
+     renderBody();
+     // If we just expanded, collapse the other panel
+     if (!collapsed) collapseOthers('searchPanel');
     });
 
     div.appendChild(headerEl);
     div.appendChild(bodyEl);
     setTimeout(() => {
-        document.getElementById('bottomPanelContainer').appendChild(div);
+     const c = document.getElementById('bottomPanelContainer');
+     if (c && c.firstChild) {
+       c.prepend(div); // ensure Search is on top
+     } else if (c) {
+       c.appendChild(div);
+     }
+     // register with accordion after it's in the DOM
+     registerPanel('searchPanel', { isExpanded, expand, collapse });
     }, 0);
     return div;
   };
